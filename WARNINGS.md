@@ -132,7 +132,7 @@ if debug:
 ## <a name="allowed-symbol-load-locations"></a>Symbol must be loaded from a specific location
 
   * Category name: `allowed-symbol-load-locations`
-  * Automatic fix: no
+  * Automatic fix: yes (when there is exactly one allowed location for all symbols in the load statement)
   * [Suppress the warning](#suppress): `# buildifier: disable=allowed-symbol-load-locations`
 
 Warns when a symbol is loaded from a location other than the expected ones.
@@ -147,6 +147,16 @@ Expected locations are specified in the tables file:
   }
 }
 ```
+
+When there is exactly one allowed location for every symbol in a load statement and that
+location is the same for all of them, `buildifier -lint=fix` will automatically rewrite the
+load module path to the canonical location.
+
+The following C++ rule symbols from `rules_cc` have built-in canonical locations set to
+`@rules_cc//cc:defs.bzl`: `cc_binary`, `cc_import`, `cc_library`, `cc_shared_library`,
+`cc_test`, `objc_import`, `objc_library`. This means that loads from the per-rule files
+(e.g. `@rules_cc//cc:cc_binary.bzl`) will be automatically rewritten to `@rules_cc//cc:defs.bzl`
+when running `buildifier -lint=fix`.
 
 --------------------------------------------------------------------------------
 

@@ -41,3 +41,73 @@ load(":a.bzl", "s4")
 		},
 		scopeEverywhere)
 }
+
+// TestWarnLoadLocationFix verifies that when a load statement contains only symbols
+// that all require the same single canonical location, the fix rewrites the module path.
+func TestWarnLoadLocationFix(t *testing.T) {
+	tables.AllowedSymbolLoadLocations["sym1"] = map[string]bool{":canonical.bzl": true}
+	tables.AllowedSymbolLoadLocations["sym2"] = map[string]bool{":canonical.bzl": true}
+
+	// Single symbol in load requiring a single location: fix changes module.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load(":wrong.bzl", "sym1")
+`, `
+load(":canonical.bzl", "sym1")
+`,
+		[]string{
+			`:1: Symbol "sym1" must be loaded from :canonical.bzl.`,
+		},
+		scopeEverywhere)
+
+	// Multiple symbols in one load all requiring the same location: fix changes module.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load(":wrong.bzl", "sym1", "sym2")
+`, `
+load(":canonical.bzl", "sym1", "sym2")
+`,
+		[]string{
+			`:1: Symbol "sym1" must be loaded from :canonical.bzl.`,
+			`:1: Symbol "sym2" must be loaded from :canonical.bzl.`,
+		},
+		scopeEverywhere)
+
+	// Mixed load (one restricted symbol + one unrestricted): no fix, only warn.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load(":wrong.bzl", "sym1", "unrestricted")
+`, `
+load(":wrong.bzl", "sym1", "unrestricted")
+`,
+		[]string{
+			`:1: Symbol "sym1" must be loaded from :canonical.bzl.`,
+		},
+		scopeEverywhere)
+}
+
+// TestWarnLoadLocationCcRules verifies that the built-in AllowedSymbolLoadLocations
+// entries for rules_cc symbols cause per-rule loads to be rewritten to defs.bzl.
+func TestWarnLoadLocationCcRules(t *testing.T) {
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+`, `
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_test")
+`,
+		[]string{
+			`:1: Symbol "cc_binary" must be loaded from @rules_cc//cc:defs.bzl.`,
+			`:2: Symbol "cc_library" must be loaded from @rules_cc//cc:defs.bzl.`,
+			`:3: Symbol "cc_test" must be loaded from @rules_cc//cc:defs.bzl.`,
+		},
+		scopeEverywhere)
+
+	// A load already using defs.bzl should generate no warning and no fix.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+`, `
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+`,
+		[]string{},
+		scopeEverywhere)
+}
