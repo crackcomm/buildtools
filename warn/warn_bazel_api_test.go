@@ -572,12 +572,7 @@ cc_import()
 `, fmt.Sprintf(`
 """My file"""
 
-load("%[1]s:cc_binary.bzl", "cc_binary")
-load("%[1]s:cc_import.bzl", "cc_import")
-load("%[1]s:cc_library.bzl", "cc_library")
-load("%[1]s:cc_test.bzl", "cc_test")
-load("%[1]s:objc_import.bzl", "objc_import")
-load("%[1]s:objc_library.bzl", "objc_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library", "cc_test", "objc_import", "objc_library")
 load("%[1]s/toolchains:cc_toolchain.bzl", "cc_toolchain")
 load("%[1]s/toolchains:cc_toolchain_suite.bzl", "cc_toolchain_suite")
 load("%[1]s/toolchains:fdo_prefetch_hints.bzl", "fdo_prefetch_hints")
@@ -597,16 +592,16 @@ fdo_profile()
 cc_import()
 `, expectedLoadPrefix),
 		[]string{
-			fmt.Sprintf(`:4: Function "cc_library" is not global anymore and needs to be loaded from "%s:cc_library.bzl".`, expectedLoadPrefix),
-			fmt.Sprintf(`:5: Function "cc_binary" is not global anymore and needs to be loaded from "%s:cc_binary.bzl".`, expectedLoadPrefix),
-			fmt.Sprintf(`:6: Function "cc_test" is not global anymore and needs to be loaded from "%s:cc_test.bzl".`, expectedLoadPrefix),
+			`:4: Function "cc_library" is not global anymore and needs to be loaded from "@rules_cc//cc:defs.bzl".`,
+			`:5: Function "cc_binary" is not global anymore and needs to be loaded from "@rules_cc//cc:defs.bzl".`,
+			`:6: Function "cc_test" is not global anymore and needs to be loaded from "@rules_cc//cc:defs.bzl".`,
 			fmt.Sprintf(`:7: Function "fdo_prefetch_hints" is not global anymore and needs to be loaded from "%s/toolchains:fdo_prefetch_hints.bzl".`, expectedLoadPrefix),
-			fmt.Sprintf(`:8: Function "objc_library" is not global anymore and needs to be loaded from "%s:objc_library.bzl".`, expectedLoadPrefix),
-			fmt.Sprintf(`:9: Function "objc_import" is not global anymore and needs to be loaded from "%s:objc_import.bzl".`, expectedLoadPrefix),
+			`:8: Function "objc_library" is not global anymore and needs to be loaded from "@rules_cc//cc:defs.bzl".`,
+			`:9: Function "objc_import" is not global anymore and needs to be loaded from "@rules_cc//cc:defs.bzl".`,
 			fmt.Sprintf(`:10: Function "cc_toolchain" is not global anymore and needs to be loaded from "%s/toolchains:cc_toolchain.bzl".`, expectedLoadPrefix),
 			fmt.Sprintf(`:11: Function "cc_toolchain_suite" is not global anymore and needs to be loaded from "%s/toolchains:cc_toolchain_suite.bzl".`, expectedLoadPrefix),
 			fmt.Sprintf(`:13: Function "fdo_profile" is not global anymore and needs to be loaded from "%s/toolchains:fdo_profile.bzl".`, expectedLoadPrefix),
-			fmt.Sprintf(`:14: Function "cc_import" is not global anymore and needs to be loaded from "%s:cc_import.bzl".`, expectedLoadPrefix),
+			`:14: Function "cc_import" is not global anymore and needs to be loaded from "@rules_cc//cc:defs.bzl".`,
 		},
 		scopeBzl|scopeBuild)
 }

@@ -734,7 +734,7 @@ func NativeCcRulesWarning(rule string) func(f *build.File, fileReader *FileReade
 		if f.Type != build.TypeBzl && f.Type != build.TypeBuild {
 			return nil
 		}
-		return NotLoadedFunctionUsageCheck(f, fileReader, []string{rule}, tables.CcLoadPathPrefix+":"+rule+".bzl")
+		return NotLoadedFunctionUsageCheck(f, fileReader, []string{rule}, tables.CcDefsLoadPath)
 	}
 }
 

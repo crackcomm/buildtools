@@ -230,6 +230,9 @@ var AndroidLoadPath = "@rules_android//android:rules.bzl"
 // CcLoadPathPrefix is the load path for the Starlark C++ Rules.
 var CcLoadPathPrefix = "@rules_cc//cc"
 
+// CcDefsLoadPath is the canonical load path for Starlark C++ rules (cc_binary, cc_library, etc.).
+var CcDefsLoadPath = "@rules_cc//cc:defs.bzl"
+
 // JavaLoadPathPrefix is the load package for the Starlark Java Rules.
 var JavaLoadPathPrefix = "@rules_java//java"
 
