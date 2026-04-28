@@ -3,15 +3,42 @@ package warn
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/bazelbuild/buildtools/build"
+	"github.com/bazelbuild/buildtools/bzlenv"
 	"github.com/bazelbuild/buildtools/tables"
 )
 
-func symbolLoadLocationWarning(f *build.File) []*LinterFinding {
+func symbolLoadLocationWarning(f *build.File, fileReader *FileReader) []*LinterFinding {
 	var findings []*LinterFinding
 
+	// First, check for usages of restricted symbols (with exactly one canonical
+	// location) that aren't loaded from anywhere, and offer to insert the load.
+	// This runs before the wrong-load check so that nil placeholders are inserted
+	// into f.Stmt before any pointers into f.Stmt are captured below.
+	locToSymbols := make(map[string][]string)
+	for sym, locations := range tables.AllowedSymbolLoadLocations {
+		if len(locations) == 1 {
+			for loc := range locations {
+				locToSymbols[loc] = append(locToSymbols[loc], sym)
+			}
+		}
+	}
+	// Process in deterministic order so multiple insertions are predictable.
+	locs := make([]string, 0, len(locToSymbols))
+	for loc := range locToSymbols {
+		locs = append(locs, loc)
+	}
+	sort.Strings(locs)
+	for _, loc := range locs {
+		syms := locToSymbols[loc]
+		sort.Strings(syms)
+		findings = append(findings, unloadedRestrictedSymbolCheck(f, fileReader, syms, loc)...)
+	}
+
+	// Check existing load statements for wrong locations.
 	for stmtIndex := 0; stmtIndex < len(f.Stmt); stmtIndex++ {
 		load, ok := f.Stmt[stmtIndex].(*build.LoadStmt)
 		if !ok {
@@ -93,6 +120,60 @@ func symbolLoadLocationWarning(f *build.File) []*LinterFinding {
 			findings = append(findings, finding)
 		}
 
+	}
+	return findings
+}
+
+// unloadedRestrictedSymbolCheck finds usages of restricted symbols (with a single
+// canonical load path) that are not loaded from anywhere, and proposes a fix to
+// insert the correct load statement.
+func unloadedRestrictedSymbolCheck(f *build.File, fileReader *FileReader, globals []string, loadFrom string) []*LinterFinding {
+	toLoad := make(map[string]bool)
+	var findings []*LinterFinding
+
+	resolvedLoadFrom := useApparentRepoNameIfExternal(loadFrom, fileReader)
+
+	var walk func(expr *build.Expr, env *bzlenv.Environment)
+	walk = func(expr *build.Expr, env *bzlenv.Environment) {
+		defer bzlenv.WalkOnceWithEnvironment(*expr, env, walk)
+
+		call, ok := (*expr).(*build.CallExpr)
+		if !ok {
+			return
+		}
+		ident, ok := call.X.(*build.Ident)
+		if !ok {
+			return
+		}
+		if env.Get(ident.Name) != nil {
+			return // already loaded or bound in scope
+		}
+		for _, global := range globals {
+			if ident.Name == global {
+				toLoad[global] = true
+				findings = append(findings,
+					makeLinterFinding(call.X, fmt.Sprintf("Symbol %q must be loaded from %q.", global, resolvedLoadFrom)))
+				break
+			}
+		}
+	}
+	var expr build.Expr = f
+	walk(&expr, bzlenv.NewEnvironment())
+
+	if len(toLoad) == 0 {
+		return nil
+	}
+
+	loads := make([]string, 0, len(toLoad))
+	for l := range toLoad {
+		loads = append(loads, l)
+	}
+	sort.Strings(loads)
+	replacement := insertLoad(f, resolvedLoadFrom, loads)
+	if replacement != nil {
+		for _, finding := range findings {
+			finding.Replacement = append(finding.Replacement, *replacement)
+		}
 	}
 	return findings
 }

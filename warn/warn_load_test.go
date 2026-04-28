@@ -111,3 +111,42 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 		[]string{},
 		scopeEverywhere)
 }
+
+// TestWarnLoadLocationUnloadedSymbol verifies that when a symbol with a single
+// canonical load location is used but not loaded at all, allowed-symbol-load-locations
+// fires a warning and offers to insert the correct load statement.
+func TestWarnLoadLocationUnloadedSymbol(t *testing.T) {
+	savedLocations := tables.AllowedSymbolLoadLocations
+	tables.AllowedSymbolLoadLocations = map[string]map[string]bool{}
+	for k, v := range savedLocations {
+		tables.AllowedSymbolLoadLocations[k] = v
+	}
+	tables.AllowedSymbolLoadLocations["cc_benchmark"] = map[string]bool{"//bazel/cc:build_defs.bzl": true}
+	defer func() { tables.AllowedSymbolLoadLocations = savedLocations }()
+
+	// Symbol used but not loaded: should warn and add the load.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+cc_benchmark(name = "foo")
+`, `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+
+cc_benchmark(name = "foo")
+`,
+		[]string{
+			`:1: Symbol "cc_benchmark" must be loaded from "//bazel/cc:build_defs.bzl".`,
+		},
+		scopeEverywhere)
+
+	// Symbol already loaded from the correct location: no warning, no fix.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+
+cc_benchmark(name = "foo")
+`, `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+
+cc_benchmark(name = "foo")
+`,
+		[]string{},
+		scopeEverywhere)
+}
