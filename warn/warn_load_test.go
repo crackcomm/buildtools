@@ -41,3 +41,158 @@ load(":a.bzl", "s4")
 		},
 		scopeEverywhere)
 }
+
+// TestWarnLoadLocationFix verifies that when a load statement contains only symbols
+// that all require the same single canonical location, the fix rewrites the module path.
+func TestWarnLoadLocationFix(t *testing.T) {
+	tables.AllowedSymbolLoadLocations["sym1"] = map[string]bool{":canonical.bzl": true}
+	tables.AllowedSymbolLoadLocations["sym2"] = map[string]bool{":canonical.bzl": true}
+
+	// Single symbol in load requiring a single location: fix changes module.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load(":wrong.bzl", "sym1")
+`, `
+load(":canonical.bzl", "sym1")
+`,
+		[]string{
+			`:1: Symbol "sym1" must be loaded from :canonical.bzl.`,
+		},
+		scopeEverywhere)
+
+	// Multiple symbols in one load all requiring the same location: fix changes module.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load(":wrong.bzl", "sym1", "sym2")
+`, `
+load(":canonical.bzl", "sym1", "sym2")
+`,
+		[]string{
+			`:1: Symbol "sym1" must be loaded from :canonical.bzl.`,
+			`:1: Symbol "sym2" must be loaded from :canonical.bzl.`,
+		},
+		scopeEverywhere)
+
+	// Mixed load (one restricted symbol + one unrestricted): no fix, only warn.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load(":wrong.bzl", "sym1", "unrestricted")
+`, `
+load(":wrong.bzl", "sym1", "unrestricted")
+`,
+		[]string{
+			`:1: Symbol "sym1" must be loaded from :canonical.bzl.`,
+		},
+		scopeEverywhere)
+}
+
+// TestWarnLoadLocationCcRules verifies that the built-in AllowedSymbolLoadLocations
+// entries for rules_cc symbols cause per-rule loads to be rewritten to defs.bzl.
+func TestWarnLoadLocationCcRules(t *testing.T) {
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+`, `
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_test")
+`,
+		[]string{
+			`:1: Symbol "cc_binary" must be loaded from @rules_cc//cc:defs.bzl.`,
+			`:2: Symbol "cc_library" must be loaded from @rules_cc//cc:defs.bzl.`,
+			`:3: Symbol "cc_test" must be loaded from @rules_cc//cc:defs.bzl.`,
+		},
+		scopeEverywhere)
+
+	// A load already using defs.bzl should generate no warning and no fix.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+`, `
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+`,
+		[]string{},
+		scopeEverywhere)
+}
+
+// TestWarnLoadLocationUnloadedSymbol verifies that when a symbol with a single
+// canonical load location is used but not loaded at all, allowed-symbol-load-locations
+// fires a warning and offers to insert the correct load statement.
+func TestWarnLoadLocationUnloadedSymbol(t *testing.T) {
+	savedLocations := tables.AllowedSymbolLoadLocations
+	tables.AllowedSymbolLoadLocations = map[string]map[string]bool{}
+	for k, v := range savedLocations {
+		tables.AllowedSymbolLoadLocations[k] = v
+	}
+	tables.AllowedSymbolLoadLocations["cc_benchmark"] = map[string]bool{"//bazel/cc:build_defs.bzl": true}
+	defer func() { tables.AllowedSymbolLoadLocations = savedLocations }()
+
+	// Symbol used but not loaded: should warn and add the load.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+cc_benchmark(name = "foo")
+`, `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+
+cc_benchmark(name = "foo")
+`,
+		[]string{
+			`:1: Symbol "cc_benchmark" must be loaded from "//bazel/cc:build_defs.bzl".`,
+		},
+		scopeEverywhere)
+
+	// Symbol already loaded from the correct location: no warning, no fix.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+
+cc_benchmark(name = "foo")
+`, `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+
+cc_benchmark(name = "foo")
+`,
+		[]string{},
+		scopeEverywhere)
+}
+
+// TestWarnLoadLocationMultipleUnloaded verifies that when symbols from multiple
+// different canonical locations are all unloaded in the same file, all of the
+// correct loads are inserted in a single pass (no pointer-invalidation bug).
+func TestWarnLoadLocationMultipleUnloaded(t *testing.T) {
+	savedLocations := tables.AllowedSymbolLoadLocations
+	tables.AllowedSymbolLoadLocations = map[string]map[string]bool{}
+	for k, v := range savedLocations {
+		tables.AllowedSymbolLoadLocations[k] = v
+	}
+	tables.AllowedSymbolLoadLocations["cc_benchmark"] = map[string]bool{"//bazel/cc:build_defs.bzl": true}
+	defer func() { tables.AllowedSymbolLoadLocations = savedLocations }()
+
+	// Both cc_test (from @rules_cc//cc:defs.bzl) and cc_benchmark (from
+	// //bazel/cc:build_defs.bzl) are used without loads. Both loads must be
+	// inserted in a single run.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+cc_test(
+    name = "foo_test",
+    srcs = ["foo_test.cc"],
+)
+
+cc_benchmark(
+    name = "foo_bench",
+    srcs = ["foo_bench.cc"],
+)
+`, `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+cc_test(
+    name = "foo_test",
+    srcs = ["foo_test.cc"],
+)
+
+cc_benchmark(
+    name = "foo_bench",
+    srcs = ["foo_bench.cc"],
+)
+`,
+		[]string{
+			`:1: Symbol "cc_test" must be loaded from "@rules_cc//cc:defs.bzl".`,
+			`:6: Symbol "cc_benchmark" must be loaded from "//bazel/cc:build_defs.bzl".`,
+		},
+		scopeEverywhere)
+}

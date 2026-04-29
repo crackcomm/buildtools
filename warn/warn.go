@@ -116,7 +116,6 @@ var RuleWarningMap = map[string]func(call *build.CallExpr, pkg string) *LinterFi
 
 // FileWarningMap lists the warnings that run on the whole file.
 var FileWarningMap = map[string]func(f *build.File) []*LinterFinding{
-	"allowed-symbol-load-locations": symbolLoadLocationWarning,
 	"attr-applicable_licenses":      attrApplicableLicensesWarning,
 	"attr-cfg":                      attrConfigurationWarning,
 	"attr-license":                  attrLicenseWarning,
@@ -172,6 +171,7 @@ var FileWarningMap = map[string]func(f *build.File) []*LinterFinding{
 
 // MultiFileWarningMap lists the warnings that run on the whole file, but may use other files.
 var MultiFileWarningMap = map[string]func(f *build.File, fileReader *FileReader) []*LinterFinding{
+	"allowed-symbol-load-locations":      symbolLoadLocationWarning,
 	"bzl-visibility":                     bzlVisibilityWarning,
 	"deprecated-function":                deprecatedFunctionWarning,
 	"git-repository":                     nativeGitRepositoryWarning,

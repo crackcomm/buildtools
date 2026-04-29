@@ -230,6 +230,9 @@ var AndroidLoadPath = "@rules_android//android:rules.bzl"
 // CcLoadPathPrefix is the load path for the Starlark C++ Rules.
 var CcLoadPathPrefix = "@rules_cc//cc"
 
+// CcDefsLoadPath is the canonical load path for Starlark C++ rules (cc_binary, cc_library, etc.).
+var CcDefsLoadPath = "@rules_cc//cc:defs.bzl"
+
 // JavaLoadPathPrefix is the load package for the Starlark Java Rules.
 var JavaLoadPathPrefix = "@rules_java//java"
 
@@ -266,7 +269,18 @@ var IsModuleOverride = map[string]bool{
 }
 
 // AllowedSymbolLoadLocations contains locations for loading rules that are allowed to be used.
-var AllowedSymbolLoadLocations = map[string]map[string]bool{}
+// The built-in entries below map each C++ rule symbol to the canonical @rules_cc//cc:defs.bzl
+// location, so that buildifier can warn about and automatically fix loads from the per-rule
+// files (e.g. @rules_cc//cc:cc_binary.bzl) to the single canonical defs.bzl path.
+var AllowedSymbolLoadLocations = map[string]map[string]bool{
+	"cc_binary":         {"@rules_cc//cc:defs.bzl": true},
+	"cc_import":         {"@rules_cc//cc:defs.bzl": true},
+	"cc_library":        {"@rules_cc//cc:defs.bzl": true},
+	"cc_shared_library": {"@rules_cc//cc:defs.bzl": true},
+	"cc_test":           {"@rules_cc//cc:defs.bzl": true},
+	"objc_import":       {"@rules_cc//cc:defs.bzl": true},
+	"objc_library":      {"@rules_cc//cc:defs.bzl": true},
+}
 
 // OverrideTables allows a user of the build package to override the special-case rules. The user-provided tables replace the built-in tables.
 func OverrideTables(labelArg, denylist, listArg, sortableListArg, sortDenylist, sortAllowlist map[string]bool, namePriority map[string]int, stripLabelLeadingSlashes, shortenAbsoluteLabelsToRelative bool, symbolLoadLocation map[string][]string) {
