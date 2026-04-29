@@ -150,3 +150,49 @@ cc_benchmark(name = "foo")
 		[]string{},
 		scopeEverywhere)
 }
+
+// TestWarnLoadLocationMultipleUnloaded verifies that when symbols from multiple
+// different canonical locations are all unloaded in the same file, all of the
+// correct loads are inserted in a single pass (no pointer-invalidation bug).
+func TestWarnLoadLocationMultipleUnloaded(t *testing.T) {
+	savedLocations := tables.AllowedSymbolLoadLocations
+	tables.AllowedSymbolLoadLocations = map[string]map[string]bool{}
+	for k, v := range savedLocations {
+		tables.AllowedSymbolLoadLocations[k] = v
+	}
+	tables.AllowedSymbolLoadLocations["cc_benchmark"] = map[string]bool{"//bazel/cc:build_defs.bzl": true}
+	defer func() { tables.AllowedSymbolLoadLocations = savedLocations }()
+
+	// Both cc_test (from @rules_cc//cc:defs.bzl) and cc_benchmark (from
+	// //bazel/cc:build_defs.bzl) are used without loads. Both loads must be
+	// inserted in a single run.
+	checkFindingsAndFix(t, "allowed-symbol-load-locations", `
+cc_test(
+    name = "foo_test",
+    srcs = ["foo_test.cc"],
+)
+
+cc_benchmark(
+    name = "foo_bench",
+    srcs = ["foo_bench.cc"],
+)
+`, `
+load("//bazel/cc:build_defs.bzl", "cc_benchmark")
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+cc_test(
+    name = "foo_test",
+    srcs = ["foo_test.cc"],
+)
+
+cc_benchmark(
+    name = "foo_bench",
+    srcs = ["foo_bench.cc"],
+)
+`,
+		[]string{
+			`:1: Symbol "cc_test" must be loaded from "@rules_cc//cc:defs.bzl".`,
+			`:6: Symbol "cc_benchmark" must be loaded from "//bazel/cc:build_defs.bzl".`,
+		},
+		scopeEverywhere)
+}
